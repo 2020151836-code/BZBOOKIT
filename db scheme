@@ -1,0 +1,154 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.appointment (
+  apptid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  clientid uuid NOT NULL,
+  serviceid uuid NOT NULL,
+  staffid uuid,
+  date date NOT NULL,
+  time time without time zone NOT NULL,
+  status character varying NOT NULL DEFAULT 'Pending'::character varying CHECK (status::text = ANY (ARRAY['Pending'::character varying, 'Confirmed'::character varying, 'Completed'::character varying, 'Cancelled'::character varying, 'No-Show'::character varying]::text[])),
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT appointment_pkey PRIMARY KEY (apptid),
+  CONSTRAINT fk_appt_client FOREIGN KEY (clientid) REFERENCES public.client(clientid),
+  CONSTRAINT fk_appt_service FOREIGN KEY (serviceid) REFERENCES public.service(serviceid),
+  CONSTRAINT fk_appt_staff FOREIGN KEY (staffid) REFERENCES public.staff(staffid)
+);
+CREATE TABLE public.business_owner (
+  ownerid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name character varying NOT NULL,
+  email character varying NOT NULL UNIQUE CHECK (email::text ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'::text),
+  businessname character varying NOT NULL CHECK (businessname::text ~* '^[A-Za-z0-9\s]+$'::text),
+  passwordhash character varying,
+  lastlogin timestamp with time zone,
+  accountstatus character varying DEFAULT 'Active'::character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT business_owner_pkey PRIMARY KEY (ownerid)
+);
+CREATE TABLE public.chatbot_knowledgebase (
+  ckid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  question character varying NOT NULL,
+  answer character varying NOT NULL,
+  category character varying NOT NULL,
+  lastupdated timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT chatbot_knowledgebase_pkey PRIMARY KEY (ckid)
+);
+CREATE TABLE public.chatbot_log (
+  logid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  clientid uuid,
+  sessionid character varying NOT NULL,
+  question character varying NOT NULL,
+  response character varying NOT NULL,
+  resolved boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT chatbot_log_pkey PRIMARY KEY (logid),
+  CONSTRAINT fk_chatlog_client FOREIGN KEY (clientid) REFERENCES public.client(clientid)
+);
+CREATE TABLE public.client (
+  clientid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name character varying NOT NULL CHECK (name::text ~* '^[A-Za-z\s]+$'::text),
+  email character varying NOT NULL UNIQUE CHECK (email::text ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'::text),
+  phone character varying NOT NULL,
+  password character varying,
+  lastlogin timestamp with time zone,
+  accountstatus character varying DEFAULT 'Active'::character varying,
+  registrationdate timestamp with time zone DEFAULT now(),
+  lastappointmentdate timestamp with time zone,
+  status character varying DEFAULT 'Active'::character varying,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT client_pkey PRIMARY KEY (clientid)
+);
+CREATE TABLE public.feedback (
+  feedbackid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  clientid uuid NOT NULL,
+  apptid uuid,
+  serviceid uuid,
+  staffid uuid,
+  rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comments text,
+  feedbackdate timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT feedback_pkey PRIMARY KEY (feedbackid),
+  CONSTRAINT fk_feedback_client FOREIGN KEY (clientid) REFERENCES public.client(clientid),
+  CONSTRAINT fk_feedback_appt FOREIGN KEY (apptid) REFERENCES public.appointment(apptid),
+  CONSTRAINT fk_feedback_service FOREIGN KEY (serviceid) REFERENCES public.service(serviceid),
+  CONSTRAINT fk_feedback_staff FOREIGN KEY (staffid) REFERENCES public.staff(staffid)
+);
+CREATE TABLE public.notifications (
+  notificationid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  clientid uuid NOT NULL,
+  apptid uuid NOT NULL,
+  type character varying NOT NULL CHECK (type::text = ANY (ARRAY['Appointment Reminder'::character varying, 'Appointment Confirmation'::character varying, 'Cancellation'::character varying, 'Rescheduling'::character varying, 'Promotional'::character varying]::text[])),
+  deliverystatus character varying NOT NULL DEFAULT 'Pending'::character varying CHECK (deliverystatus::text = ANY (ARRAY['Pending'::character varying, 'Sent'::character varying, 'Delivered'::character varying, 'Failed'::character varying]::text[])),
+  sentdate timestamp with time zone DEFAULT now(),
+  message text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (notificationid),
+  CONSTRAINT fk_notif_client FOREIGN KEY (clientid) REFERENCES public.client(clientid),
+  CONSTRAINT fk_notif_appt FOREIGN KEY (apptid) REFERENCES public.appointment(apptid)
+);
+CREATE TABLE public.payment (
+  paymentid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  apptid uuid NOT NULL,
+  amount numeric NOT NULL DEFAULT 0.00 CHECK (amount >= 0::numeric),
+  paymentdate timestamp with time zone DEFAULT now(),
+  paymentmethod character varying NOT NULL CHECK (paymentmethod::text = ANY (ARRAY['Cash'::character varying, 'Credit Card'::character varying, 'Debit Card'::character varying, 'Online'::character varying, 'Bank Transfer'::character varying]::text[])),
+  transactionid character varying,
+  status character varying DEFAULT 'Pending'::character varying CHECK (status::text = ANY (ARRAY['Pending'::character varying, 'Completed'::character varying, 'Failed'::character varying, 'Refunded'::character varying]::text[])),
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT payment_pkey PRIMARY KEY (paymentid),
+  CONSTRAINT fk_payment_appt FOREIGN KEY (apptid) REFERENCES public.appointment(apptid)
+);
+CREATE TABLE public.service (
+  serviceid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name character varying NOT NULL,
+  price numeric NOT NULL DEFAULT 0.00 CHECK (price >= 0::numeric),
+  description text NOT NULL,
+  duration integer,
+  availability character varying NOT NULL DEFAULT 'Available'::character varying CHECK (availability::text = ANY (ARRAY['Available'::character varying, 'Unavailable'::character varying, 'Limited'::character varying]::text[])),
+  categoryid integer,
+  ownerid uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT service_pkey PRIMARY KEY (serviceid),
+  CONSTRAINT fk_service_owner FOREIGN KEY (ownerid) REFERENCES public.business_owner(ownerid)
+);
+CREATE TABLE public.service_staff (
+  serviceid uuid NOT NULL,
+  staffid uuid NOT NULL,
+  assigneddate date DEFAULT CURRENT_DATE,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT service_staff_pkey PRIMARY KEY (serviceid, staffid),
+  CONSTRAINT fk_service_staff_service FOREIGN KEY (serviceid) REFERENCES public.service(serviceid),
+  CONSTRAINT fk_service_staff_staff FOREIGN KEY (staffid) REFERENCES public.staff(staffid)
+);
+CREATE TABLE public.staff (
+  staffid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name character varying NOT NULL CHECK (name::text ~* '^[A-Za-z\s]+$'::text),
+  role character varying NOT NULL,
+  availability character varying,
+  ownerid uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT staff_pkey PRIMARY KEY (staffid),
+  CONSTRAINT fk_staff_owner FOREIGN KEY (ownerid) REFERENCES public.business_owner(ownerid)
+);
+CREATE TABLE public.staff_schedule (
+  scheduleid uuid NOT NULL DEFAULT uuid_generate_v4(),
+  staffid uuid NOT NULL,
+  dayofweek integer NOT NULL CHECK (dayofweek >= 0 AND dayofweek <= 6),
+  starttime time without time zone NOT NULL,
+  endtime time without time zone NOT NULL,
+  isavailable boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT staff_schedule_pkey PRIMARY KEY (scheduleid),
+  CONSTRAINT fk_schedule_staff FOREIGN KEY (staffid) REFERENCES public.staff(staffid)
+);
